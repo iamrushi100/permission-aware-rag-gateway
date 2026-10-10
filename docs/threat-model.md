@@ -1,7 +1,7 @@
 # Threat Model — Permission-Aware RAG Security Gateway
 
 **Status:** Working design and implementation record
-**Project stage:** Phase 2 — authorization and retrieval-boundary demo
+**Project stage:** Phase 5 — local authorized response-preview demo
 **Data classification:** Fictional demo data only
 
 ## 1. Purpose and scope
@@ -67,6 +67,13 @@ tested.
 - `retrieval_boundary.py` supplies an in-memory exact-query-to-document-ID
   mapping. It returns IDs only and delegates to `authorize_search()`. This is
   a deterministic demo candidate provider, not a search engine.
+- `response_boundary.py` calls the authorized retrieval flow and formats a
+  local preview only from a valid, non-empty `ALLOWED` result. Each non-empty
+  string document contributes a snippet of at most 80 characters; longer
+  snippets end with `...`. Citations contain only the IDs of those authorized
+  documents. Malformed results, empty content, and dependency failures produce
+  no preview content. This is a demo formatter, not a production citation
+  pipeline.
 - Corresponding `unittest` files test these behaviors using fictional data and
   fake dependencies. Run the suite from the project root with:
 
@@ -94,8 +101,8 @@ The project does not implement:
 - Production user, document-metadata, or protected-content data adapters.
 - An API server or a production database.
 - A vector database or a real retrieval/ranking algorithm.
-- An LLM or a complete snippets, citations, response, and model-context
-  construction pipeline.
+- An actual LLM, production response path, or production snippets/citations
+  pipeline. The local response preview is only a demonstration formatter.
 - Production audit logging or a complete end-to-end logging/debug-output
   safety guarantee.
 
@@ -117,9 +124,10 @@ side channels around it.
    only. An ID is not evidence that its document may be read.
 4. **Authorization to protected-content loading:** The existing boundary
    authorizes candidate metadata before loading content.
-5. **Authorized results to future snippets/citations/model context:** These
-   components do not yet exist. They must derive their inputs only from
-   authorized results.
+5. **Authorized results to local response preview:** The demo formatter uses
+   only authorized results. A production response/citation path and actual
+   model-context construction do not exist; future components must preserve
+   the same authorized-only data flow.
 6. **Application to future audit/debug output:** Logging is not implemented;
    future output must not contain credentials or unauthorized content.
 
@@ -212,7 +220,8 @@ mitigation.
 - Future authentication and password handling will use established libraries,
   not custom cryptography.
 - Future retrieval may begin with a simple keyword or TF-IDF baseline.
-- A recording LLM stub may later be used to inspect model inputs.
+- A local recording-model stub exists to inspect supplied model input; it is
+  not an LLM and does not generate model responses.
 - Tests will be added as the corresponding components are implemented.
 
 Revisit these assumptions when the architecture changes.

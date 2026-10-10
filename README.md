@@ -9,10 +9,10 @@ production security gateway.
 
 ## Current status
 
-**Phase 4: local command-line demonstration.** A pure authorization policy, a
+**Phase 5: local authorized response preview.** A pure authorization policy, a
 simulated authorization boundary, an in-memory ID-only candidate provider, a
-recording-model stub, and `unittest` tests exist. The project is not a
-production-ready RAG application.
+local recording-model stub, a response-preview boundary, and `unittest` tests
+exist. The project is not a production-ready RAG application.
 
 Run the three-scenario local demo from the project root with:
 
@@ -47,6 +47,12 @@ that tests have passed in every environment.
 - `retrieval_boundary.py` provides deterministic exact-query-to-document-ID
   candidate selection in memory. It stores and returns IDs only; it is a demo
   candidate provider, not a search engine.
+- `response_boundary.py` creates a local preview only from a valid, non-empty
+  authorized search result. It makes snippets from at most the first 80
+  characters of each non-empty text document (adding `...` when truncated)
+  and uses authorized document IDs as citations. Ordinary denials exclude
+  only their candidate; dependency and malformed-result failures return no
+  preview content.
 - `model_boundary.py` builds model input from authorized results only and uses
   a local recording-model stub. `demo.py` runs authorized, denied, and
   dependency-failure scenarios with fictional in-memory dependencies, then
@@ -67,11 +73,11 @@ searching documents.
 ### Planned or not implemented
 
 The project does not currently implement real token verification, production
-user/document/content data adapters, an API server, a vector database, an
-actual LLM, or a complete snippets/citations/response pipeline. It also does
-not implement production audit logging. Requirements concerning responses,
-logs, debugging output, snippets, citations, and real model context remain
-end-to-end requirements until those components exist and are tested.
+user/document/content data adapters, an API server, a vector database, or an
+actual LLM. The response preview is a local demonstration, not a production
+snippets/citations/response pipeline. It also does not implement production
+audit logging or establish end-to-end safety for logs, debugging output, or
+real model context.
 
 ## Approved version-one authorization policy
 
