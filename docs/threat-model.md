@@ -106,12 +106,12 @@ The project does not implement:
 - Production audit logging or a complete end-to-end logging/debug-output
   safety guarantee.
 
-Consequently, requirements about preventing disclosure through actual API
-responses, logs, debugging output, snippets, citations, or LLM context are
-design requirements whose end-to-end enforcement is not yet implemented or
-verified. The current boundary returns authorized content to its caller only
-after checks; future callers must preserve that ordering and must not create
-side channels around it.
+Consequently, requirements about preventing disclosure through production API
+responses, logs, debugging output, production snippets/citations, or a real
+LLM context remain design requirements whose end-to-end enforcement is not
+implemented or verified. Local prototype boundaries cover snippets, citations,
+and model-input construction using authorized results. Future integrations
+must preserve that ordering and must not create side channels around it.
 
 ## 5. Trust boundaries
 
@@ -124,10 +124,10 @@ side channels around it.
    only. An ID is not evidence that its document may be read.
 4. **Authorization to protected-content loading:** The existing boundary
    authorizes candidate metadata before loading content.
-5. **Authorized results to local response preview:** The demo formatter uses
-   only authorized results. A production response/citation path and actual
-   model-context construction do not exist; future components must preserve
-   the same authorized-only data flow.
+5. **Authorized results to local model input and response preview:** Both
+   prototype boundaries use only authorized results and have tests. A real
+   LLM integration and production response/citation path do not exist; future
+   components must preserve the same authorized-only data flow.
 6. **Application to future audit/debug output:** Logging is not implemented;
    future output must not contain credentials or unauthorized content.
 
@@ -198,9 +198,9 @@ one-to-one test or that tests have passed.
 The boundary tests also check that unverified or missing identity causes zero
 user-metadata, document-metadata, and content-loader calls, and that a content
 loader failure returns no partial result. Integration tests check that the
-candidate provider selects IDs only and that test stand-ins for snippets,
-citations, and model context are derived from authorized results. There is no
-actual snippets/citations/model-context component to test yet.
+candidate provider selects IDs only. The local response and model-input
+boundaries have tests for deriving snippets, citations, and model input from
+authorized results; they are prototype components, not production integrations.
 
 ## 8. Attacker goals
 
@@ -234,7 +234,9 @@ against prompt injection, predictable behavior from every real LLM,
 production deployment, or security certification. Current tests establish
 only the behaviors they assert against the simulated components. In
 particular, there is no real token verification, persistent data source,
-retrieval algorithm, API response path, LLM context builder, or audit logger.
+production retrieval algorithm, API response path, real LLM/context
+integration, or audit logger. Local model-input construction and response
+preview are demos only.
 
 ## 11. Open questions
 

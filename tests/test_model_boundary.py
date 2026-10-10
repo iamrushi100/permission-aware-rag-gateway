@@ -159,6 +159,30 @@ class ModelBoundaryTests(unittest.TestCase):
                 self.assertIsNone(result.response)
                 self.assertEqual(model.inputs, [])
 
+    def test_empty_or_whitespace_content_fails_before_model_invocation(self):
+        for content in ("", " \t\n "):
+            with self.subTest(content=repr(content)):
+                dependencies = FakeDependencies()
+                provider = InMemoryCandidateProvider({"question": ("allowed-id",)})
+                model = RecordingModel()
+                malformed_result = BoundaryResult(
+                    outcome=Outcome.ALLOWED,
+                    documents=(AuthorizedContent("allowed-id", content),),
+                )
+
+                with patch(
+                    "model_boundary.search_with_candidates",
+                    return_value=malformed_result,
+                ):
+                    result = self.run_search(dependencies, provider, model)
+
+                self.assertIs(result.outcome, Outcome.DEPENDENCY_FAILURE)
+                self.assertIsNone(result.response)
+                self.assertEqual(model.inputs, [])
+                self.assertNotIn("AUTHORIZED TEXT", repr(result))
+                if content:
+                    self.assertNotIn(content, repr(result))
+
     def test_model_exception_returns_generic_failure_without_leaking_details(self):
         class FailingModel:
             def generate(self, model_input):

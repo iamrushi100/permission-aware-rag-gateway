@@ -58,7 +58,7 @@ def _validated_search_result(
             return Outcome.DEPENDENCY_FAILURE, None
         # Existing demo content is text. Reject other objects instead of
         # implicitly stringifying potentially sensitive or unexpected values.
-        if type(document.content) is not str:
+        if type(document.content) is not str or not document.content.strip():
             return Outcome.DEPENDENCY_FAILURE, None
 
     return Outcome.ALLOWED, result.documents
