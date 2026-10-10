@@ -1,7 +1,7 @@
 # Threat Model — Permission-Aware RAG Security Gateway
 
 **Status:** Working design and implementation record
-**Project stage:** Phase 6 — local signed-token API demo
+**Project stage:** Phase 7 — authorization-first local TF-IDF retrieval demo
 **Data classification:** Fictional demo data only
 
 ## 1. Purpose and scope
@@ -65,9 +65,13 @@ tested.
   metadata lookup failure or timeout fails the whole request before content
   loading (T16). If content loading fails after earlier authorized content
   was loaded, the returned result contains no partial content.
-- `retrieval_boundary.py` supplies an in-memory exact-query-to-document-ID
-  mapping. It returns IDs only and delegates to `authorize_search()`. This is
-  a deterministic demo candidate provider, not a search engine.
+- `retrieval_boundary.py` selects IDs from a small, manually prepared,
+  in-memory term-to-ID candidate catalog without inspecting document content.
+  It delegates to `authorize_search()` first. After that boundary returns,
+  TF-IDF scores are calculated using only the authorized documents' text, and
+  those documents are returned in stable relevance order. Restricted content
+  is not loaded into or used to build the ranking corpus. This is a local
+  deterministic baseline, not a production search engine.
 - `response_boundary.py` calls the authorized retrieval flow and formats a
   local preview only from a valid, non-empty `ALLOWED` result. Each non-empty
   string document contributes a snippet of at most 80 characters; longer
@@ -96,9 +100,10 @@ that the suite passed in a particular run.
 The API performs local signed-token validation with a configured HS256 secret
 and fixed demo users. The separate `demo.py` and unit-test seams use injected
 fake authentication. User and document records remain fictional and
-in-memory. The candidate provider only maps exact query strings to configured
-IDs; it does not search document content, rank results, or conceal whether an
-ID is configured.
+in-memory. Candidate IDs come from a small fixed term-to-ID catalog; scoring
+uses TF-IDF over authorized text only. The catalog is a demo fixture, not a
+general-purpose search index, and it does not conceal whether an ID is
+configured.
 
 ### Planned or not implemented
 
@@ -108,7 +113,8 @@ The project does not implement:
   token-verification service. The local API verifies its demo JWTs.
 - Production user, document-metadata, or protected-content data adapters.
 - A production API service or database. A local FastAPI demo exists.
-- A vector database or a real retrieval/ranking algorithm.
+- A vector database, production search index, or production retrieval system.
+  The local TF-IDF baseline is implemented and covered by tests.
 - An actual LLM, production response path, or production snippets/citations
   pipeline. The local response preview is only a demonstration formatter.
 - Production audit logging or a complete end-to-end logging/debug-output
@@ -232,7 +238,8 @@ mitigation.
 - The demo uses fictional users and documents and is run locally.
 - Future authentication and password handling will use established libraries,
   not custom cryptography.
-- Future retrieval may begin with a simple keyword or TF-IDF baseline.
+- The current TF-IDF implementation is a teaching baseline; future search
+  systems must preserve authorization-before-ranking ordering.
 - A local recording-model stub exists to inspect supplied model input; it is
   not an LLM and does not generate model responses.
 - Tests will be added as the corresponding components are implemented.
@@ -256,8 +263,8 @@ construction, and response preview are demos only.
 - What database schema and production data adapters, if any, should be used?
 - Which identity provider and token/key-management configuration should a
   future production adapter use?
-- What retrieval algorithm and ranking behavior should replace the deterministic
-  candidate mapping?
+- What production candidate index and retrieval behavior, if any, should
+  replace the demo catalog and local TF-IDF baseline?
 - What API response and citation formats should be exposed?
 - What audit-event schema is useful without recording secrets or content?
 - How should a leak be defined and measured in end-to-end tests?

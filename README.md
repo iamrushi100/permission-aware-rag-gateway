@@ -9,9 +9,10 @@ production security gateway.
 
 ## Current status
 
-**Phase 6: local authenticated API demo.** The project includes the pure
-authorization policy, local authorization/retrieval/model/response boundaries,
-a small FastAPI application, signed-token authentication, and `unittest` tests.
+**Phase 7: local authorization-first retrieval demo.** The project includes
+the pure authorization policy, local authorization/retrieval/model/response
+boundaries, a small FastAPI application, signed-token authentication, and
+`unittest` tests.
 The project is not a production-ready RAG application.
 
 Run the three-scenario local demo from the project root with:
@@ -61,9 +62,12 @@ that tests have passed in every environment.
   candidate (T14). A metadata lookup failure or timeout fails the whole search
   before any candidate content is loaded (T16). A content-loader failure
   returns no partial search result.
-- `retrieval_boundary.py` provides deterministic exact-query-to-document-ID
-  candidate selection in memory. It stores and returns IDs only; it is a demo
-  candidate provider, not a search engine.
+- `retrieval_boundary.py` selects candidate IDs from a small in-memory
+  term-to-ID catalog without inspecting document content. It then uses the
+  existing authorization boundary to validate metadata and load authorized
+  content. Only those authorized documents form the TF-IDF corpus and affect
+  relevance scores and result order. This is a deterministic local baseline,
+  not a production search engine; the candidate catalog is manually prepared.
 - `response_boundary.py` creates a local preview only from a valid, non-empty
   authorized search result. It makes snippets from at most the first 80
   characters of each non-empty text document (adding `...` when truncated)
@@ -89,8 +93,9 @@ The API verifies signed tokens with PyJWT and creates `VerifiedIdentity` only
 after signature and required-claim validation. Its demo accounts and all user,
 document, and content records remain fictional and in memory. The separate
 `demo.py` and unit-test boundaries also use injected identity fakes. The
-candidate provider uses fixed in-memory mappings rather than ranking or
-searching documents.
+candidate provider uses a small fixed term-to-ID catalog. Ranking is a local
+TF-IDF calculation over content returned by the authorization boundary;
+unauthorized content is not loaded into or included in the ranking corpus.
 
 ### Planned or not implemented
 

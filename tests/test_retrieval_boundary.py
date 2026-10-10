@@ -84,6 +84,16 @@ class CandidateRetrievalBoundaryTests(unittest.TestCase):
         self.assertNotIn("AUTHORIZED TEXT", repr(candidates))
         self.assertNotIn("SECRET PROTECTED TEXT", repr(candidates))
 
+    def test_candidate_catalog_matches_query_terms_and_returns_ids_only(self):
+        provider = InMemoryCandidateProvider(
+            {"engineering guide": ("allowed-id",)}
+        )
+
+        candidates = provider.select_candidate_ids("find engineering guide please")
+
+        self.assertEqual(candidates, ("allowed-id",))
+        self.assertTrue(all(type(candidate_id) is str for candidate_id in candidates))
+
     def test_search_returns_only_authorized_content_for_downstream_values(self):
         dependencies = FakeDependencies()
         provider = InMemoryCandidateProvider(
@@ -104,6 +114,55 @@ class CandidateRetrievalBoundaryTests(unittest.TestCase):
         self.assertIn("AUTHORIZED TEXT", model_context)
         self.assertNotIn("SECRET PROTECTED TEXT", repr(result))
         self.assertNotIn("SECRET PROTECTED TEXT", repr(snippets + citations + [model_context]))
+
+    def test_restricted_high_match_content_is_not_loaded_or_used_for_ranking(self):
+        dependencies = FakeDependencies()
+        dependencies.document_records["second-allowed-id"] = {
+            "sensitivity": "medium",
+            "access_type": "public",
+        }
+        dependencies.contents["allowed-id"] = "routine handbook text"
+        dependencies.contents["second-allowed-id"] = "needle needle engineering guide"
+        dependencies.contents["denied-id"] = (
+            "RESTRICTED MARKER needle needle needle needle needle"
+        )
+        provider = InMemoryCandidateProvider(
+            {"needle": ("allowed-id", "denied-id", "second-allowed-id")}
+        )
+
+        result = dependencies.search("needle", "demo-credential", provider)
+
+        self.assertIs(result.outcome, Outcome.ALLOWED)
+        self.assertEqual(
+            [item.document_id for item in result.documents],
+            ["second-allowed-id", "allowed-id"],
+        )
+        self.assertEqual(
+            dependencies.content_calls, ["allowed-id", "second-allowed-id"]
+        )
+        self.assertNotIn("denied-id", repr(result))
+        self.assertNotIn("RESTRICTED MARKER", repr(result))
+
+    def test_empty_query_is_denied_before_metadata_or_content_lookup(self):
+        dependencies = FakeDependencies()
+        provider = InMemoryCandidateProvider({"": ("allowed-id",)})
+
+        result = dependencies.search("   ", "demo-credential", provider)
+
+        self.assertIs(result.outcome, Outcome.DENIED)
+        self.assertEqual(dependencies.user_calls, 0)
+        self.assertEqual(dependencies.document_calls, [])
+        self.assertEqual(dependencies.content_calls, [])
+
+    def test_empty_candidate_corpus_returns_denial_without_content_loading(self):
+        dependencies = FakeDependencies()
+        provider = InMemoryCandidateProvider({"needle": ()})
+
+        result = dependencies.search("needle", "demo-credential", provider)
+
+        self.assertIs(result.outcome, Outcome.DENIED)
+        self.assertEqual(result.documents, ())
+        self.assertEqual(dependencies.content_calls, [])
 
     def test_unverified_identity_causes_no_metadata_or_content_lookups(self):
         dependencies = FakeDependencies()
