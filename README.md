@@ -98,6 +98,26 @@ Invoke-RestMethod -Method Post `
 The fictional accounts and example secret are for this local demo only; do not
 reuse them or expose the app to an untrusted network.
 
+## Optional local web interface
+
+Install the project dependencies, including Streamlit, in the project virtual
+environment. Start the API in one PowerShell terminal as shown above. In a
+second terminal, activate the same environment and run:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+streamlit run frontend.py
+```
+
+The interface defaults to `http://127.0.0.1:8000`. It uses the existing
+`/auth/login` and `/search` API endpoints; the backend remains the only
+authority for identity and document access. For the fictional engineer account,
+use `engineer-demo` / `engineering-demo-password` (or the finance account,
+`finance-demo` / `finance-demo-password`). The bearer token is held in the
+Streamlit session and cleared on logout or when the backend URL changes.
+Frontend URL validation permits only local HTTP/HTTPS hosts. This is a local
+prototype, not a production deployment.
+
 Run the test suite with:
 
 ```text
