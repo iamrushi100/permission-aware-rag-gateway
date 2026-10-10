@@ -9,10 +9,10 @@ production security gateway.
 
 ## Current status
 
-**Phase 8: local security audit events.** The project includes
-the pure authorization policy, local authorization/retrieval/model/response
-boundaries, a small FastAPI application, signed-token authentication, and
-`unittest` tests.
+**Current status: local security prototype.** The project includes the pure
+authorization policy, authorization-first TF-IDF retrieval, authorized response
+preview, a local recording-model stub, signed-token authentication in a small
+FastAPI application, and best-effort in-memory audit events.
 The project is not a production-ready RAG application.
 
 Run the three-scenario local demo from the project root with:
@@ -32,11 +32,24 @@ $env:RAG_GATEWAY_SECRET = "local-demo-secret-change-this-value-123456"
 python -m uvicorn api:app --reload
 ```
 
-Use the local demo accounts `engineer-demo` / `engineering-demo-password` or
-`finance-demo` / `finance-demo-password` at `POST /auth/login`. Send the
-returned bearer token to `POST /search` with `{"query":"demo search"}`.
-These fictional credentials and the local secret are for this demo only; do
-not reuse them or expose the app to an untrusted network.
+In a second PowerShell window, log in with a fictional local account and use
+the returned bearer token for a search:
+
+```powershell
+$login = Invoke-RestMethod -Method Post `
+  -Uri http://127.0.0.1:8000/auth/login `
+  -ContentType "application/json" `
+  -Body '{"username":"engineer-demo","password":"engineering-demo-password"}'
+$headers = @{ Authorization = "Bearer $($login.access_token)" }
+Invoke-RestMethod -Method Post `
+  -Uri http://127.0.0.1:8000/search `
+  -Headers $headers `
+  -ContentType "application/json" `
+  -Body '{"query":"demo search"}'
+```
+
+The fictional accounts and example secret are for this local demo only; do not
+reuse them or expose the app to an untrusted network.
 
 Run the test suite with:
 
@@ -133,14 +146,10 @@ model context are also absent.
 
 ## Roadmap
 
-1. **Current prototype:** authenticated local FastAPI API; authorization before
-   content loading; permission-filtered TF-IDF ranking; authorized-only
-   snippets and citations; a local recording-model stub; best-effort
-   in-memory audit events.
-2. Expand regression coverage as these local boundaries evolve.
-3. Evaluate production audit storage and integrity requirements without
+1. Expand regression coverage as the local boundaries evolve.
+2. Evaluate production audit storage and integrity requirements without
    recording secrets or protected content.
-4. Consider an optional UI after core behavior is established.
+3. Consider an optional UI after core behavior is established.
 
 See the [threat model](docs/threat-model.md) for the policy, current control
 coverage, test plan, assumptions, and open questions.
