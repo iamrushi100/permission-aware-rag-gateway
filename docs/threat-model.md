@@ -1,7 +1,7 @@
 # Threat Model — Permission-Aware RAG Security Gateway
 
 **Status:** Working design and implementation record
-**Project stage:** Phase 5 — local authorized response-preview demo
+**Project stage:** Phase 6 — local signed-token API demo
 **Data classification:** Fictional demo data only
 
 ## 1. Purpose and scope
@@ -50,9 +50,10 @@ tested.
   no reading bypass.
 - `authorization_boundary.py` separates the pure policy from injected
   authentication, metadata lookup, and protected-content loading functions.
-  Its `VerifiedIdentity` is a simulated test marker only; the injected
-  authenticator does not perform cryptographic or real token verification and
-  does not prove the caller's claims are genuine.
+  The boundary trusts the supplied `VerifiedIdentity` and does not verify
+  tokens itself. Test seams create simulated identities; `api.py` creates one
+  only after its signed-token checks succeed. The data type alone does not
+  prove that identity was verified.
 - The boundary validates the shape and values of required source metadata
   before building canonical `User` and `Document` records. Missing records or
   invalid/conflicting metadata are ordinary denials. Lookup exceptions and
@@ -74,6 +75,12 @@ tested.
   documents. Malformed results, empty content, and dependency failures produce
   no preview content. This is a demo formatter, not a production citation
   pipeline.
+- `api.py` provides local login and protected-search routes. PyJWT verifies
+  the token signature, expiry, issuer, audience, and required subject claims
+  before the API constructs `VerifiedIdentity`. User permissions are loaded
+  from fixed in-memory demo records, and search results use
+  `response_boundary.py`. These are local prototype components, not production
+  authentication, data adapters, or an API service.
 - Corresponding `unittest` files test these behaviors using fictional data and
   fake dependencies. Run the suite from the project root with:
 
@@ -86,27 +93,28 @@ that the suite passed in a particular run.
 
 ### Simulated behavior
 
-Authentication and data access are supplied through injected test functions
-and fakes. The simulated authenticator can return a `VerifiedIdentity` marker,
-but no actual token signature, expiry, issuer, or audience is checked. The
-in-memory candidate provider only maps exact query strings to configured IDs;
-it does not search document content, rank results, or conceal whether an ID is
-configured.
+The API performs local signed-token validation with a configured HS256 secret
+and fixed demo users. The separate `demo.py` and unit-test seams use injected
+fake authentication. User and document records remain fictional and
+in-memory. The candidate provider only maps exact query strings to configured
+IDs; it does not search document content, rank results, or conceal whether an
+ID is configured.
 
 ### Planned or not implemented
 
 The project does not implement:
 
-- Real token verification or production identity management.
+- Production identity management, key rotation, revocation, or a production
+  token-verification service. The local API verifies its demo JWTs.
 - Production user, document-metadata, or protected-content data adapters.
-- An API server or a production database.
+- A production API service or database. A local FastAPI demo exists.
 - A vector database or a real retrieval/ranking algorithm.
 - An actual LLM, production response path, or production snippets/citations
   pipeline. The local response preview is only a demonstration formatter.
 - Production audit logging or a complete end-to-end logging/debug-output
   safety guarantee.
 
-Consequently, requirements about preventing disclosure through production API
+Consequently, requirements about preventing disclosure through deployed API
 responses, logs, debugging output, production snippets/citations, or a real
 LLM context remain design requirements whose end-to-end enforcement is not
 implemented or verified. Local prototype boundaries cover snippets, citations,
@@ -115,11 +123,13 @@ must preserve that ordering and must not create side channels around it.
 
 ## 5. Trust boundaries
 
-1. **Client to future API:** Client fields are untrusted. No API currently
-   exists.
-2. **Identity and permission data to policy:** Future adapters must provide
-   trusted identity and current, validated records. Current authentication and
-   lookup functions are simulated/injected.
+1. **Client to local demo API:** Request fields are untrusted. The API accepts
+   login credentials or a search query; authorization attributes come from
+   server-side demo records, not request fields.
+2. **Identity and permission data to policy:** The local API verifies a signed
+   token before creating `VerifiedIdentity`, then supplies current in-memory
+   demo records. Other test/demo callers use injected identities. Production
+   adapters must provide trusted identity and current, validated records.
 3. **Candidate selection to authorization:** Candidate selection supplies IDs
    only. An ID is not evidence that its document may be read.
 4. **Authorization to protected-content loading:** The existing boundary
@@ -192,15 +202,18 @@ one-to-one test or that tests have passed.
 | T12 | Department-restricted document has a missing or invalid department. | Deny; content is excluded. |
 | T13 | User clearance is missing or invalid. | Deny; content is excluded. |
 | T14 | Search contains authorized candidates and an ordinarily unauthorized candidate. | Return authorized candidates only; denied content is excluded from results, snippets, citations, and model context. |
-| T15 | **Planned, unimplemented test scenario:** use an invalid, expired, or malformed authentication token. The current simulated authentication seam does not validate real token signatures, expiry, issuer, or audience. | Deny; no document content is exposed. |
+| T15 | Local API tests use invalid credentials, malformed/forged/expired tokens, and a token missing a required claim. | Deny; no document content is exposed. |
 | T16 | Multi-document search has candidates whose metadata checks pass and a candidate whose required metadata lookup fails or times out. | Fail the entire search before any content loading; return no candidate content and reveal no protected content in errors or debugging output. |
 
-The boundary tests also check that unverified or missing identity causes zero
-user-metadata, document-metadata, and content-loader calls, and that a content
-loader failure returns no partial result. Integration tests check that the
-candidate provider selects IDs only. The local response and model-input
-boundaries have tests for deriving snippets, citations, and model input from
-authorized results; they are prototype components, not production integrations.
+The API tests check that missing, malformed, forged, expired, and incomplete
+tokens are rejected before content loading, and that request-body privilege
+fields are rejected. Boundary tests check that unverified or missing identity
+causes zero user-metadata, document-metadata, and content-loader calls, and
+that a content loader failure returns no partial result. Integration tests
+check that the candidate provider selects IDs only. The local response and
+model-input boundaries have tests for deriving snippets, citations, and model
+input from authorized results; they are prototype components, not production
+integrations.
 
 ## 8. Attacker goals
 
@@ -233,15 +246,16 @@ isolation, a general-purpose attribute-based policy engine, complete protection
 against prompt injection, predictable behavior from every real LLM,
 production deployment, or security certification. Current tests establish
 only the behaviors they assert against the simulated components. In
-particular, there is no real token verification, persistent data source,
-production retrieval algorithm, API response path, real LLM/context
-integration, or audit logger. Local model-input construction and response
-preview are demos only.
+particular, there is no production identity provider, persistent data source,
+production retrieval algorithm, deployed API response path, real LLM/context
+integration, or audit logger. The local signed-token API, model-input
+construction, and response preview are demos only.
 
 ## 11. Open questions
 
 - What database schema and production data adapters, if any, should be used?
-- Which authentication/token configuration should a future real adapter use?
+- Which identity provider and token/key-management configuration should a
+  future production adapter use?
 - What retrieval algorithm and ranking behavior should replace the deterministic
   candidate mapping?
 - What API response and citation formats should be exposed?

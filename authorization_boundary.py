@@ -1,9 +1,10 @@
 """Small boundary around the pure authorization policy.
 
-This module demonstrates how a caller can pass verified identity and canonical
-metadata to ``is_authorized`` before loading protected content. Its
-``VerifiedIdentity`` and injected authentication function are a test seam only;
-they do not provide real token verification or production authentication.
+This module passes an identity supplied by a trusted authentication adapter
+and canonical metadata to ``is_authorized`` before loading protected content.
+The boundary itself does not verify tokens. Tests use a simulated identity;
+the local API constructs ``VerifiedIdentity`` only after signed-token checks.
+Neither path provides production authentication.
 """
 
 from dataclasses import dataclass
@@ -23,7 +24,7 @@ class Outcome(Enum):
 
 @dataclass(frozen=True)
 class VerifiedIdentity:
-    """Identity marker returned by a simulated authenticator in tests."""
+    """Server-created identity marker; this data type does not verify tokens."""
 
     subject: str
     verified: bool

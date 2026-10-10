@@ -9,16 +9,33 @@ production security gateway.
 
 ## Current status
 
-**Phase 5: local authorized response preview.** A pure authorization policy, a
-simulated authorization boundary, an in-memory ID-only candidate provider, a
-local recording-model stub, a response-preview boundary, and `unittest` tests
-exist. The project is not a production-ready RAG application.
+**Phase 6: local authenticated API demo.** The project includes the pure
+authorization policy, local authorization/retrieval/model/response boundaries,
+a small FastAPI application, signed-token authentication, and `unittest` tests.
+The project is not a production-ready RAG application.
 
 Run the three-scenario local demo from the project root with:
 
 ```text
 python demo.py
 ```
+
+Install the listed dependencies, set a local signing secret, and run the API
+from the project root in PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+$env:RAG_GATEWAY_SECRET = "local-demo-secret-change-this-value-123456"
+python -m uvicorn api:app --reload
+```
+
+Use the local demo accounts `engineer-demo` / `engineering-demo-password` or
+`finance-demo` / `finance-demo-password` at `POST /auth/login`. Send the
+returned bearer token to `POST /search` with `{"query":"demo search"}`.
+These fictional credentials and the local secret are for this demo only; do
+not reuse them or expose the app to an untrusted network.
 
 Run the test suite with:
 
@@ -57,27 +74,32 @@ that tests have passed in every environment.
   a local recording-model stub. `demo.py` runs authorized, denied, and
   dependency-failure scenarios with fictional in-memory dependencies, then
   prints only generic outcomes and whether the stub was invoked.
+- `api.py` provides local login and protected-search endpoints. It verifies
+  signed HS256 tokens and required expiry, issuer, audience, and subject claims
+  using PyJWT. User clearance, department, active status, and role come from
+  fixed server-side demo records; request bodies cannot set them.
 - Standard-library `unittest` tests cover these policy and boundary behaviors.
 
 “Implemented and tested” describes behavior represented by this code and its
 tests. It does not establish production readiness or complete system security.
 
-### Simulated behavior
+### Local demo authentication and simulated behavior
 
-The identity-checking component and data dependencies are injected test
-seams. Tests use fakes, including a `VerifiedIdentity` marker; it does not
-perform or represent genuine cryptographic or token verification. The
+The API verifies signed tokens with PyJWT and creates `VerifiedIdentity` only
+after signature and required-claim validation. Its demo accounts and all user,
+document, and content records remain fictional and in memory. The separate
+`demo.py` and unit-test boundaries also use injected identity fakes. The
 candidate provider uses fixed in-memory mappings rather than ranking or
 searching documents.
 
 ### Planned or not implemented
 
-The project does not currently implement real token verification, production
-user/document/content data adapters, an API server, a vector database, or an
-actual LLM. The response preview is a local demonstration, not a production
-snippets/citations/response pipeline. It also does not implement production
-audit logging or establish end-to-end safety for logs, debugging output, or
-real model context.
+The project does not implement production identity management, production
+user/document/content data adapters, a production API service, a vector
+database, or an actual LLM. The local token verifier, API, and response preview
+are demonstrations, not production authentication or a production
+snippets/citations pipeline. Production audit logging and end-to-end safety
+for deployed logs, debugging output, and real model context are also absent.
 
 ## Approved version-one authorization policy
 
