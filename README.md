@@ -21,6 +21,53 @@ Run the three-scenario local demo from the project root with:
 python demo.py
 ```
 
+The demo uses fictional in-memory dependencies and a local recording-model
+stub. Its scenarios show an authorized request reaching the stub, a denied
+request that does not load protected content or invoke the stub, and a metadata
+dependency failure that fails closed without invoking the stub. Output contains
+only the scenario outcome and whether the stub was invoked.
+
+## Local request flow
+
+```mermaid
+flowchart TD
+    C[Client] --> A[FastAPI: verify signed JWT]
+    A -->|invalid or missing token| X[Generic authentication rejection]
+    A -->|verified identity| I[Select candidate document IDs]
+    I --> M[Validate user and document authorization metadata]
+    M -->|ordinary policy denial| D[Exclude denied candidate]
+    M -->|dependency failure or timeout| F[Fail search before content loading]
+    M -->|authorized candidates| L[Load authorized document content]
+    L --> R[TF-IDF ranking over authorized content only]
+    R --> S[Authorized snippets and citations]
+    S --> O[API response]
+    D -->|remaining authorized candidates| L
+    L -->|load failure| F
+    R -.->|separate demo path: authorized results only| G[Local recording-model boundary]
+```
+
+This diagram describes the local prototype flow, not a production deployment.
+The API returns the response preview; it does not call a real LLM. The
+recording-model boundary is a separate local demonstration path.
+
+## Security design
+
+The candidate catalog selects IDs first. Authorization metadata is validated
+before protected content is loaded, and ranking uses only the content returned
+for authorized candidates. Denied content must not affect relevance scores,
+snippets, citations, or model input. An ordinary denial excludes its candidate;
+a required metadata dependency failure stops the whole search before content
+loading.
+
+## Limitations
+
+- Demo users, documents, metadata, and content are fictional and in memory.
+- The candidate catalog is manually prepared; TF-IDF is a local baseline, not
+  a production search engine.
+- The model is a recording stub, not a real LLM integration.
+- Audit events are best-effort and in memory, not durable or tamper-resistant.
+- This is a learning prototype, not production-ready software.
+
 Install the listed dependencies, set a local signing secret, and run the API
 from the project root in PowerShell:
 
