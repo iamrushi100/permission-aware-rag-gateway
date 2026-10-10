@@ -1,7 +1,7 @@
 # Threat Model — Permission-Aware RAG Security Gateway
 
 **Status:** Working design and implementation record
-**Project stage:** Phase 7 — authorization-first local TF-IDF retrieval demo
+**Project stage:** Phase 8 — local in-memory security audit events
 **Data classification:** Fictional demo data only
 
 ## 1. Purpose and scope
@@ -83,8 +83,16 @@ tested.
   the token signature, expiry, issuer, audience, and required subject claims
   before the API constructs `VerifiedIdentity`. User permissions are loaded
   from fixed in-memory demo records, and search results use
-  `response_boundary.py`. These are local prototype components, not production
-  authentication, data adapters, or an API service.
+  `response_boundary.py`. Each authenticated search request emits one
+  structured event with a UTC timestamp, fixed `search` action, generic
+  outcome, and minimal subject identifier. Events omit query text, document
+  IDs, authorization metadata, content, snippets, credentials, tokens, and
+  exception details. Emission is best-effort: a sink failure does not change
+  the authorization outcome or API response. These are local prototype
+  components, not production authentication, data adapters, or an API service.
+- `InMemoryAuditSink` stores events only for the lifetime of the process.
+  Events disappear on restart and are not durable or tamper-proof. This local
+  sink provides no production logging or audit-integrity guarantee.
 - Corresponding `unittest` files test these behaviors using fictional data and
   fake dependencies. Run the suite from the project root with:
 
@@ -117,8 +125,8 @@ The project does not implement:
   The local TF-IDF baseline is implemented and covered by tests.
 - An actual LLM, production response path, or production snippets/citations
   pipeline. The local response preview is only a demonstration formatter.
-- Production audit logging or a complete end-to-end logging/debug-output
-  safety guarantee.
+- Persistent or tamper-proof audit storage, production audit logging, or a
+  complete end-to-end logging/debug-output safety guarantee.
 
 Consequently, requirements about preventing disclosure through deployed API
 responses, logs, debugging output, production snippets/citations, or a real
@@ -144,8 +152,10 @@ must preserve that ordering and must not create side channels around it.
    prototype boundaries use only authorized results and have tests. A real
    LLM integration and production response/citation path do not exist; future
    components must preserve the same authorized-only data flow.
-6. **Application to future audit/debug output:** Logging is not implemented;
-   future output must not contain credentials or unauthorized content.
+6. **API search outcomes to local audit sink:** The API emits one structured,
+   content-free event for each authenticated search outcome. The in-memory
+   sink is best-effort and temporary; future production logging must preserve
+   the exclusions and must not contain credentials or unauthorized content.
 
 ## 6. Approved version-one authorization policy
 
@@ -213,13 +223,15 @@ one-to-one test or that tests have passed.
 
 The API tests check that missing, malformed, forged, expired, and incomplete
 tokens are rejected before content loading, and that request-body privilege
-fields are rejected. Boundary tests check that unverified or missing identity
-causes zero user-metadata, document-metadata, and content-loader calls, and
-that a content loader failure returns no partial result. Integration tests
-check that the candidate provider selects IDs only. The local response and
-model-input boundaries have tests for deriving snippets, citations, and model
-input from authorized results; they are prototype components, not production
-integrations.
+fields are rejected. They also check that allowed, denied, and dependency-
+failure search outcomes create generic events, and that sink failures do not
+change denial or expose details. Boundary tests check that unverified or
+missing identity causes zero user-metadata, document-metadata, and content-
+loader calls, and that a content-loader failure returns no partial result.
+Integration tests check that the candidate provider selects IDs only. The
+local response and model-input boundaries have tests for deriving snippets,
+citations, and model input from authorized results; they are prototype
+components, not production integrations.
 
 ## 8. Attacker goals
 
@@ -255,8 +267,8 @@ production deployment, or security certification. Current tests establish
 only the behaviors they assert against the simulated components. In
 particular, there is no production identity provider, persistent data source,
 production retrieval algorithm, deployed API response path, real LLM/context
-integration, or audit logger. The local signed-token API, model-input
-construction, and response preview are demos only.
+integration, or persistent, tamper-proof audit logger. The local signed-token
+API, model-input construction, and response preview are demos only.
 
 ## 11. Open questions
 
@@ -266,6 +278,7 @@ construction, and response preview are demos only.
 - What production candidate index and retrieval behavior, if any, should
   replace the demo catalog and local TF-IDF baseline?
 - What API response and citation formats should be exposed?
-- What audit-event schema is useful without recording secrets or content?
+- What persistence and integrity guarantees should a future production audit
+  system provide while excluding secrets and content?
 - How should a leak be defined and measured in end-to-end tests?
 - Is an optional real-LLM adapter worthwhile after the recording-stub tests?

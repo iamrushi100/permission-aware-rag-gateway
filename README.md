@@ -9,7 +9,7 @@ production security gateway.
 
 ## Current status
 
-**Phase 7: local authorization-first retrieval demo.** The project includes
+**Phase 8: local security audit events.** The project includes
 the pure authorization policy, local authorization/retrieval/model/response
 boundaries, a small FastAPI application, signed-token authentication, and
 `unittest` tests.
@@ -81,7 +81,12 @@ that tests have passed in every environment.
 - `api.py` provides local login and protected-search endpoints. It verifies
   signed HS256 tokens and required expiry, issuer, audience, and subject claims
   using PyJWT. User clearance, department, active status, and role come from
-  fixed server-side demo records; request bodies cannot set them.
+  fixed server-side demo records; request bodies cannot set them. Each
+  authenticated search emits one structured in-memory audit event with a UTC
+  timestamp, `search` action, generic outcome, and subject identifier. Events
+  exclude queries, document IDs, content, snippets, credentials, tokens,
+  authorization metadata, and exception details. Audit-sink failures are
+  ignored so they cannot change the access decision.
 - Standard-library `unittest` tests cover these policy and boundary behaviors.
 
 “Implemented and tested” describes behavior represented by this code and its
@@ -103,8 +108,10 @@ The project does not implement production identity management, production
 user/document/content data adapters, a production API service, a vector
 database, or an actual LLM. The local token verifier, API, and response preview
 are demonstrations, not production authentication or a production
-snippets/citations pipeline. Production audit logging and end-to-end safety
-for deployed logs, debugging output, and real model context are also absent.
+snippets/citations pipeline. The audit sink is in-memory and temporary: events
+disappear when the process stops and are not tamper-proof. Production audit
+logging and end-to-end safety for deployed logs, debugging output, and real
+model context are also absent.
 
 ## Approved version-one authorization policy
 
@@ -129,8 +136,8 @@ for deployed logs, debugging output, and real model context are also absent.
 1. Extend the tested boundary toward a permission-filtered retrieval flow.
 2. Add further security tests for data sources, responses, citations, and
    model-context construction.
-3. Define safe audit events and verify that secrets and protected content are
-   excluded.
+3. Evaluate production audit storage and integrity requirements without
+   recording secrets or protected content.
 4. Improve documentation as implementation grows.
 5. Consider an optional UI after core behavior is established.
 

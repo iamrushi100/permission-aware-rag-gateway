@@ -1,6 +1,8 @@
 """Local API tests for signed tokens and authorized response delivery."""
 
+import io
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
@@ -173,6 +175,103 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.json(), {"detail": "Request denied"})
         self.assertNotIn("FICTIONAL FINANCE SECRET CONTENT", response.text)
         self.assertNotIn("finance-plan", response.text)
+        self.assertEqual(self.app.state.dependencies.content_calls, [])
+
+    def test_authorized_search_records_content_free_audit_event(self):
+        token = self.login_and_get_token()
+
+        response = self.client.post(
+            "/search",
+            json={"query": "demo search"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        events = self.app.state.audit_sink.events
+        self.assertEqual(len(events), 1)
+        event = events[0]
+        self.assertEqual(event.action, "search")
+        self.assertEqual(event.outcome, "allowed")
+        self.assertEqual(event.subject, "demo-user")
+        self.assertEqual(event.timestamp_utc.utcoffset(), timedelta(0))
+        self.assertEqual(
+            set(event.__dataclass_fields__),
+            {"timestamp_utc", "action", "outcome", "subject"},
+        )
+        event_text = repr(event)
+        for sensitive_value in (
+            ENGINEER_LOGIN["password"],
+            token,
+            f"Bearer {token}",
+            TEST_SECRET,
+            "demo search",
+            "FICTIONAL PUBLIC GUIDE CONTENT",
+            "FICTIONAL ENGINEERING CONTENT",
+        ):
+            self.assertNotIn(sensitive_value, event_text)
+
+    def test_denied_search_records_generic_denial_event(self):
+        token = self.login_and_get_token()
+
+        response = self.client.post(
+            "/search",
+            json={"query": "finance only"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(len(self.app.state.audit_sink.events), 1)
+        event = self.app.state.audit_sink.events[0]
+        self.assertEqual(
+            (event.action, event.outcome, event.subject),
+            ("search", "denied", "demo-user"),
+        )
+        self.assertNotIn("finance-plan", repr(event))
+        self.assertNotIn("FICTIONAL FINANCE SECRET CONTENT", repr(event))
+
+    def test_dependency_failure_records_generic_failure_event(self):
+        token = self.login_and_get_token()
+        raw_error = "RAW DATABASE FAILURE SECRET CONTENT"
+        self.app.state.dependencies.document_errors["dependency-doc"] = RuntimeError(
+            raw_error
+        )
+
+        response = self.client.post(
+            "/search",
+            json={"query": "dependency failure"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json(), {"detail": "Request unavailable"})
+        self.assertEqual(len(self.app.state.audit_sink.events), 1)
+        event = self.app.state.audit_sink.events[0]
+        self.assertEqual(event.outcome, "dependency_failure")
+        self.assertNotIn(raw_error, repr(event) + response.text)
+        self.assertNotIn("FICTIONAL DEPENDENCY CONTENT", repr(event) + response.text)
+
+    def test_audit_sink_failure_does_not_turn_denial_into_success_or_leak_details(self):
+        class FailingAuditSink:
+            def emit(self, event):
+                raise RuntimeError("RAW AUDIT FAILURE FINANCE SECRET CONTENT")
+
+        token = self.login_and_get_token()
+        self.app.state.audit_sink = FailingAuditSink()
+        captured = io.StringIO()
+
+        with redirect_stdout(captured), redirect_stderr(captured):
+            response = self.client.post(
+                "/search",
+                json={"query": "finance only"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json(), {"detail": "Request denied"})
+        self.assertNotIn("RAW AUDIT FAILURE", response.text + captured.getvalue())
+        self.assertNotIn(
+            "FICTIONAL FINANCE SECRET CONTENT", response.text + captured.getvalue()
+        )
         self.assertEqual(self.app.state.dependencies.content_calls, [])
 
     def test_token_is_denied_if_server_side_user_becomes_inactive(self):

@@ -109,6 +109,28 @@ class LoginResponse(BaseModel):
     token_type: str = "bearer"
 
 
+@dataclass(frozen=True)
+class AuditEvent:
+    """Fixed, content-free metadata for one authenticated search outcome."""
+
+    timestamp_utc: datetime
+    action: str
+    outcome: str
+    subject: str
+
+
+class InMemoryAuditSink:
+    """Store local demo events in memory; they disappear when the app stops."""
+
+    def __init__(self):
+        self.events: list[AuditEvent] = []
+
+    def emit(self, event: AuditEvent) -> None:
+        """Record one structured event without formatting sensitive request data."""
+
+        self.events.append(event)
+
+
 class DemoDependencies:
     """Fictional in-memory user, document, and content records for this API."""
 
@@ -192,6 +214,7 @@ def create_app(secret_key: str | None = None) -> FastAPI:
         else os.environ.get(SECRET_ENVIRONMENT_VARIABLE)
     )
     app.state.dependencies = DemoDependencies()
+    app.state.audit_sink = InMemoryAuditSink()
     app.state.candidate_provider = InMemoryCandidateProvider(
         {
             "demo search": ("public-guide", "engineering-guide", "finance-plan"),
@@ -301,6 +324,24 @@ def create_app(secret_key: str | None = None) -> FastAPI:
             load_document_metadata=dependencies.load_document_metadata,
             load_protected_content=dependencies.load_protected_content,
         )
+        audit_outcome = (
+            preview.outcome
+            if type(preview.outcome) is Outcome
+            else Outcome.DEPENDENCY_FAILURE
+        )
+        event = AuditEvent(
+            timestamp_utc=datetime.now(timezone.utc),
+            action="search",
+            outcome=audit_outcome.value,
+            subject=identity.subject,
+        )
+        try:
+            request.app.state.audit_sink.emit(event)
+        except Exception:
+            # Audit is best-effort in this local prototype. Sink failure must
+            # never change the authorization decision or expose its details.
+            pass
+
         if preview.outcome is Outcome.DENIED:
             raise HTTPException(status_code=403, detail="Request denied")
         if preview.outcome is not Outcome.ALLOWED:
