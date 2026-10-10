@@ -133,13 +133,14 @@ model context are also absent.
 
 ## Roadmap
 
-1. Extend the tested boundary toward a permission-filtered retrieval flow.
-2. Add further security tests for data sources, responses, citations, and
-   model-context construction.
+1. **Current prototype:** authenticated local FastAPI API; authorization before
+   content loading; permission-filtered TF-IDF ranking; authorized-only
+   snippets and citations; a local recording-model stub; best-effort
+   in-memory audit events.
+2. Expand regression coverage as these local boundaries evolve.
 3. Evaluate production audit storage and integrity requirements without
    recording secrets or protected content.
-4. Improve documentation as implementation grows.
-5. Consider an optional UI after core behavior is established.
+4. Consider an optional UI after core behavior is established.
 
 See the [threat model](docs/threat-model.md) for the policy, current control
 coverage, test plan, assumptions, and open questions.

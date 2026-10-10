@@ -149,6 +149,40 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.json(), {"detail": "Authentication failed"})
         self.assertEqual(self.app.state.dependencies.content_calls, [])
 
+    def test_token_with_wrong_issuer_is_rejected(self):
+        claims = self.default_claims()
+        claims["iss"] = "untrusted-demo-issuer"
+        token = self.signed_token(claims)
+
+        response = self.client.post(
+            "/search",
+            json={"query": "demo search"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json(), {"detail": "Authentication failed"})
+        self.assertNotIn("FICTIONAL PUBLIC GUIDE CONTENT", response.text)
+        self.assertNotIn("FICTIONAL FINANCE SECRET CONTENT", response.text)
+        self.assertEqual(self.app.state.dependencies.content_calls, [])
+
+    def test_token_with_wrong_audience_is_rejected(self):
+        claims = self.default_claims()
+        claims["aud"] = "untrusted-demo-client"
+        token = self.signed_token(claims)
+
+        response = self.client.post(
+            "/search",
+            json={"query": "demo search"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json(), {"detail": "Authentication failed"})
+        self.assertNotIn("FICTIONAL PUBLIC GUIDE CONTENT", response.text)
+        self.assertNotIn("FICTIONAL FINANCE SECRET CONTENT", response.text)
+        self.assertEqual(self.app.state.dependencies.content_calls, [])
+
     def test_search_rejects_client_supplied_privilege_fields(self):
         token = self.login_and_get_token()
 
