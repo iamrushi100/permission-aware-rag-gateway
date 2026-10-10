@@ -9,9 +9,18 @@ production security gateway.
 
 ## Current status
 
-**Phase 2: authorization and retrieval-boundary demo.** A pure authorization
-policy, a simulated authorization boundary, an in-memory ID-only candidate
-provider, and `unittest` tests exist. The test suite can be run with:
+**Phase 4: local command-line demonstration.** A pure authorization policy, a
+simulated authorization boundary, an in-memory ID-only candidate provider, a
+recording-model stub, and `unittest` tests exist. The project is not a
+production-ready RAG application.
+
+Run the three-scenario local demo from the project root with:
+
+```text
+python demo.py
+```
+
+Run the test suite with:
 
 ```text
 python -m unittest discover -s tests -v
@@ -38,6 +47,10 @@ that tests have passed in every environment.
 - `retrieval_boundary.py` provides deterministic exact-query-to-document-ID
   candidate selection in memory. It stores and returns IDs only; it is a demo
   candidate provider, not a search engine.
+- `model_boundary.py` builds model input from authorized results only and uses
+  a local recording-model stub. `demo.py` runs authorized, denied, and
+  dependency-failure scenarios with fictional in-memory dependencies, then
+  prints only generic outcomes and whether the stub was invoked.
 - Standard-library `unittest` tests cover these policy and boundary behaviors.
 
 “Implemented and tested” describes behavior represented by this code and its
@@ -54,11 +67,11 @@ searching documents.
 ### Planned or not implemented
 
 The project does not currently implement real token verification, production
-user/document/content data adapters, an API server, a vector database, an LLM,
-or a complete snippets/citations/context pipeline. It also does not implement
-production audit logging. Requirements concerning responses, logs, debugging
-output, snippets, citations, and model context remain end-to-end requirements
-until those components exist and are tested.
+user/document/content data adapters, an API server, a vector database, an
+actual LLM, or a complete snippets/citations/response pipeline. It also does
+not implement production audit logging. Requirements concerning responses,
+logs, debugging output, snippets, citations, and real model context remain
+end-to-end requirements until those components exist and are tested.
 
 ## Approved version-one authorization policy
 
