@@ -1,16 +1,19 @@
 # Threat Model — Permission-Aware RAG Security Gateway
 
-**Status:** Initial draft  
-**Project stage:** Phase 0 — Design  
+**Status:** Working design and implementation record
+**Project stage:** Phase 2 — authorization and retrieval-boundary demo
 **Data classification:** Fictional demo data only
 
-## 1. Purpose
+## 1. Purpose and scope
 
-The Permission-Aware RAG Security Gateway is a learning and portfolio project that demonstrates how a backend can enforce document permissions before retrieved document text is passed to a large language model (LLM).
+This beginner-friendly portfolio project demonstrates authorization checks
+that should happen before protected document text is used in a retrieval-
+augmented generation (RAG) workflow. The primary security goal is to prevent
+unauthorized document content from reaching a user or a model context.
 
-The primary security requirement is that unauthorized document content must not enter the model input.
-
-This threat model defines the initial assets, users, trust boundaries, attacker goals, security rules, assumptions, and out-of-scope features.
+The current project is a small local demonstration. The code and tests provide
+evidence for specific policy and boundary behaviors, not proof that a complete
+gateway is secure or production-ready.
 
 ## 2. Assets to protect
 
@@ -21,153 +24,216 @@ This threat model defines the initial assets, users, trust boundaries, attacker 
 | User identity | Determines whose permissions the backend evaluates. |
 | Authentication tokens | Must not be forged or accepted after expiry. |
 | Permission metadata | Determines which documents a user may access. |
-| Retrieved context | Contains the text that may be sent to the LLM. |
-| Citations and API responses | Must not expose unauthorized documents. |
-| Audit events | Should record security decisions without storing secrets. |
+| Retrieved context | Contains text that could be sent to an LLM. |
+| Citations and responses | Must not expose unauthorized documents. |
+| Audit events and debug output | Must not reveal secrets or protected content. |
 
 ## 3. Users and potential attackers
 
-### Legitimate users
+Legitimate demo users may include interns, engineers, HR users, finance users,
+and administrators. Potential attacker actions include attempting another
+department's documents, changing document IDs or request fields, presenting a
+forged or expired token, seeking indirect disclosure, or trying prompt
+injection. These are threat scenarios, not claims that the attacks have been
+tested.
 
-- Interns who can access permitted public documents.
-- Engineers who can access permitted engineering documents.
-- HR users who can access permitted HR documents.
-- Finance users who can access permitted finance documents.
-- An administrator with the explicitly defined demo permissions.
+## 4. Current architecture and control status
 
-### Potential attackers
+### Implemented and covered by unit tests
 
-- An authenticated user attempting to access another department's documents.
-- A user changing document IDs or request fields to gain additional access.
-- A user submitting a forged, malformed, or expired token.
-- A user asking questions designed to reveal restricted information indirectly.
-- A user attempting to manipulate the LLM through prompt injection.
+- `authorization.py` contains the pure `is_authorized(user, document) -> bool`
+  decision function. It accepts canonical records, performs no I/O, checks
+  the caller-supplied authentication state, active status, identity, recognized
+  enum values, clearance ordering, and exact case-sensitive department
+  matching. The authentication flag is input to the policy, not evidence that
+  identity or a token was genuinely verified. The policy gives administrators
+  no reading bypass.
+- `authorization_boundary.py` separates the pure policy from injected
+  authentication, metadata lookup, and protected-content loading functions.
+  Its `VerifiedIdentity` is a simulated test marker only; the injected
+  authenticator does not perform cryptographic or real token verification and
+  does not prove the caller's claims are genuine.
+- The boundary validates the shape and values of required source metadata
+  before building canonical `User` and `Document` records. Missing records or
+  invalid/conflicting metadata are ordinary denials. Lookup exceptions and
+  timeouts become generic dependency failures without returning exception
+  messages or content.
+- For multi-document search, the boundary completes all candidate metadata
+  lookups and policy decisions before calling any protected-content loader.
+  Ordinary policy denial excludes only that candidate (T14). A required
+  metadata lookup failure or timeout fails the whole request before content
+  loading (T16). If content loading fails after earlier authorized content
+  was loaded, the returned result contains no partial content.
+- `retrieval_boundary.py` supplies an in-memory exact-query-to-document-ID
+  mapping. It returns IDs only and delegates to `authorize_search()`. This is
+  a deterministic demo candidate provider, not a search engine.
+- Corresponding `unittest` files test these behaviors using fictional data and
+  fake dependencies. Run the suite from the project root with:
 
-These are threat scenarios for the demo, not claims that an attack has already been tested.
+  ```text
+  python -m unittest discover -s tests -v
+  ```
 
-## 4. Trust boundaries
+The command above is the documented invocation; this document makes no claim
+that the suite passed in a particular run.
 
-The initial design identifies these boundaries:
+### Simulated behavior
 
-1. **Client to API:** Requests and client-supplied fields are untrusted.
-2. **API to identity and permission data:** Authorization decisions must use verified identity and current user records.
-3. **Retrieval to context construction:** Only authorized search results may be used to build model context.
-4. **Context construction to LLM interface:** The application must not pass unauthorized document text to this interface.
-5. **Application to audit logs:** Logged information must be limited to what is needed for security review.
+Authentication and data access are supplied through injected test functions
+and fakes. The simulated authenticator can return a `VerifiedIdentity` marker,
+but no actual token signature, expiry, issuer, or audience is checked. The
+in-memory candidate provider only maps exact query strings to configured IDs;
+it does not search document content, rank results, or conceal whether an ID is
+configured.
 
-## 5. Security requirements
+### Planned or not implemented
 
-The proposed backend design must:
+The project does not implement:
 
-1. Verify authentication tokens using a trusted library.
-2. Derive identity from verified token claims, not from a user-controlled request-body field.
-3. Check the current user record and reject inactive or unknown users.
-4. Deny access by default when permission metadata is missing, invalid, or unrecognized.
-5. Check document authorization before document content enters retrieval results, snippets, citations, or model context, and before returning a document or its contents.
-6. Restrict retrieval results to documents the requesting user is authorized to read.
-7. Construct model context only from authorized results.
-8. Return citations only for authorized documents.
-9. Prevent unauthorized document content from appearing in responses, logs, debugging output, or error messages.
-10. Avoid logging passwords, bearer tokens, full document text, or complete model context.
+- Real token verification or production identity management.
+- Production user, document-metadata, or protected-content data adapters.
+- An API server or a production database.
+- A vector database or a real retrieval/ranking algorithm.
+- An LLM or a complete snippets, citations, response, and model-context
+  construction pipeline.
+- Production audit logging or a complete end-to-end logging/debug-output
+  safety guarantee.
 
-## 6. Initial authorization policy
+Consequently, requirements about preventing disclosure through actual API
+responses, logs, debugging output, snippets, citations, or LLM context are
+design requirements whose end-to-end enforcement is not yet implemented or
+verified. The current boundary returns authorized content to its caller only
+after checks; future callers must preserve that ordering and must not create
+side channels around it.
 
-The following are proposed version-one design requirements. They are not claims that controls have been implemented or verified.
+## 5. Trust boundaries
+
+1. **Client to future API:** Client fields are untrusted. No API currently
+   exists.
+2. **Identity and permission data to policy:** Future adapters must provide
+   trusted identity and current, validated records. Current authentication and
+   lookup functions are simulated/injected.
+3. **Candidate selection to authorization:** Candidate selection supplies IDs
+   only. An ID is not evidence that its document may be read.
+4. **Authorization to protected-content loading:** The existing boundary
+   authorizes candidate metadata before loading content.
+5. **Authorized results to future snippets/citations/model context:** These
+   components do not yet exist. They must derive their inputs only from
+   authorized results.
+6. **Application to future audit/debug output:** Logging is not implemented;
+   future output must not contain credentials or unauthorized content.
+
+## 6. Approved version-one authorization policy
+
+These are the approved policy requirements. Their current implementation
+coverage is described in Section 4; a listed requirement is not automatically
+an end-to-end control.
 
 A request may read a document only when all baseline checks pass:
 
-- The request has a valid authenticated identity derived from verified authentication data.
+- It has a valid authenticated identity derived from verified authentication
+  data.
 - The user exists and is active.
-- User identity and clearance, document sensitivity, and all required access metadata are present and valid.
+- User identity and clearance, document sensitivity, and all required access
+  metadata are present and valid.
 - User clearance is greater than or equal to document sensitivity.
-- The document's access type is recognized and its access-specific metadata is valid.
+- The document access type is recognized and its access-specific metadata is
+  valid.
 - No required authorization dependency has failed or timed out.
 
-Access type adds these requirements to the baseline checks:
+Access-specific rules:
 
-- A public document does not require a department match. Public status does not bypass authentication, active-user, metadata, or clearance checks.
-- A department-restricted document requires an exact match between the user's department and the document's department.
+- A public document does not require a department match. Public status does not
+  bypass authentication, active-user, metadata, or clearance checks.
+- A department-restricted document requires an exact match between the user's
+  department and the document's department.
 - Administrator status does not bypass any document-reading check.
 
-Missing, malformed, conflicting, or unrecognized required authorization metadata results in denial. If a required authorization dependency fails or times out during a multi-document search, the entire search request fails closed, even if authorization succeeded for other candidates. No candidate's protected content may be returned, and unchecked or unauthorized content must not enter model context. Authorization must succeed before document content enters retrieval results, snippets, citations, or model context. Unauthorized document content must not appear in responses, logs, debugging output, or error messages.
+Missing, malformed, conflicting, or unrecognized required authorization
+metadata causes denial. A required authorization dependency failure or timeout
+during a multi-document search fails the entire request, even if other
+candidates passed policy checks. Under T16, no candidate content is returned,
+and unchecked or unauthorized content must not reach model context. Under T14,
+ordinary policy denial excludes only the denied candidate, allowing other
+authorized candidates to proceed. In all flows, authorization must succeed
+before protected content enters results, snippets, citations, or model context.
+Unauthorized content must not appear in responses, logs, debugging output, or
+errors.
 
-## 7. Initial deterministic test plan
+## 7. Test plan and current test coverage
 
-Tests use fictional data and clearance levels ordered `low < medium < high`. In each test, all inputs not explicitly varied are valid and satisfy the proposed policy. An allow result permits the document content to enter authorized results and model context; a deny result requires that unauthorized document content remain absent from retrieval results, snippets, citations, model context, responses, logs, debugging output, and error messages.
+Tests use fictional data and clearance levels `low < medium < high`. The
+existing unit tests cover the pure policy and simulated boundary, including
+T14-like ordinary filtering and T16 metadata-failure handling. The full table
+states the intended policy cases; it is not a claim that every row has a
+one-to-one test or that tests have passed.
 
-| Test | Setup and single condition under test | Expected decision | Expected content-exposure outcome |
-|---|---|---|---|
-| T01 | Active authenticated user with valid identity and `medium` clearance; public document with valid sensitivity `medium` and access metadata. | Allow. | The authorized document content may enter results and model context. |
-| T02 | Same valid baseline as T01, except user clearance is `low` and document sensitivity is `medium`. | Deny. | Document content is absent from results and model context and is not disclosed elsewhere. |
-| T03 | Active authenticated user in `engineering` with `medium` clearance; department-restricted document in `engineering` with sensitivity `medium`. | Allow. | The authorized document content may enter results and model context. |
-| T04 | Same valid baseline as T03, except the document department is `finance` while the user department is `engineering`. | Deny. | Document content is absent from results and model context and is not disclosed elsewhere. |
-| T05 | Administrator with valid identity and sufficient clearance; a valid document whose access-specific checks pass. | Allow. | The authorized document content may enter results and model context. Admin status is not needed for the allow. |
-| T06 | Same valid baseline as T05, except administrator clearance is `low` and document sensitivity is `medium`. | Deny. | Document content is absent from results and model context and is not disclosed elsewhere. |
-| T07 | Valid active user and valid public access metadata; document sensitivity is missing. | Deny. | Document content is absent from results and model context and is not disclosed elsewhere. |
-| T08 | Valid active user and document sensitivity; document access type is an unrecognized value. | Deny. | Document content is absent from results and model context and is not disclosed elsewhere. |
-| T09 | Valid authenticated identity and otherwise-valid user/document data; user account is inactive. | Deny. | Document content is absent from results and model context and is not disclosed elsewhere. |
-| T10 | Run separate subcases with valid user/document data: one where a required authorization dependency fails, and one where it times out during the decision. | Deny (fail closed) in both subcases. | No unchecked document content enters results or model context or is disclosed elsewhere. |
-| T11 | Active authenticated user with clearance `medium`; document with sensitivity `medium`; all other checks pass. | Allow because clearance equals sensitivity. | The authorized document content may enter results and model context. |
-| T12 | Valid active user and sufficient clearance; department-restricted document has a missing department. Run a separate subcase with an invalid department value. | Deny in both subcases. | Document content is absent from results and model context and is not disclosed elsewhere. |
-| T13 | Valid authenticated active user and valid document; user clearance is missing. Run a separate subcase with an invalid clearance value. | Deny in both subcases. | Document content is absent from results and model context and is not disclosed elsewhere. |
-| T14 | Search has otherwise-authorized candidates plus one document that fails authorization for this user. | Allow authorized candidates; deny the unauthorized document. | Unauthorized content does not enter results, snippets, citations, or model context; authorized content may do so. |
-| T15 | Otherwise-valid user/document setup. Run separate subcases with an invalid, expired, and malformed authentication token. | Deny in every subcase. | No document content enters results or model context or is disclosed elsewhere. |
-| T16 | Multi-document search has multiple candidates. Authorization succeeds for some candidates, but a required authorization dependency fails for or times out while checking another candidate. | Deny the entire search request (fail closed). | No candidate's protected content is returned; unchecked or unauthorized content does not enter model context; the response, errors, and debugging output reveal no protected content. |
+| Test | Setup and condition | Expected decision and content exposure |
+|---|---|---|
+| T01 | Active authenticated user with valid identity and `medium` clearance; public document with `medium` sensitivity. | Allow; authorized content may enter authorized results. |
+| T02 | T01, except user clearance is `low`. | Deny; document content is excluded. |
+| T03 | Active engineering user with `medium` clearance; engineering-restricted document with `medium` sensitivity. | Allow; authorized content may enter authorized results. |
+| T04 | T03, except document department is `finance`. | Deny that candidate; its content is excluded. |
+| T05 | Administrator passes all ordinary checks. | Allow; administrator status is not needed for the decision. |
+| T06 | Administrator has `low` clearance for a `medium`-sensitivity document. | Deny; admin status does not bypass clearance. |
+| T07 | Document sensitivity is missing. | Deny; content is excluded. |
+| T08 | Document access type is unrecognized. | Deny; content is excluded. |
+| T09 | User is inactive. | Deny; content is excluded. |
+| T10 | Required authorization dependency raises an exception or times out. | Fail closed; no protected content is returned. |
+| T11 | User clearance is `medium`; document sensitivity is `medium`; all other checks pass. | Allow because clearance equals sensitivity. |
+| T12 | Department-restricted document has a missing or invalid department. | Deny; content is excluded. |
+| T13 | User clearance is missing or invalid. | Deny; content is excluded. |
+| T14 | Search contains authorized candidates and an ordinarily unauthorized candidate. | Return authorized candidates only; denied content is excluded from results, snippets, citations, and model context. |
+| T15 | **Planned, unimplemented test scenario:** use an invalid, expired, or malformed authentication token. The current simulated authentication seam does not validate real token signatures, expiry, issuer, or audience. | Deny; no document content is exposed. |
+| T16 | Multi-document search has candidates whose metadata checks pass and a candidate whose required metadata lookup fails or times out. | Fail the entire search before any content loading; return no candidate content and reveal no protected content in errors or debugging output. |
 
-These cases define intended checks only. They do not show that the controls exist or that any test has passed.
+The boundary tests also check that unverified or missing identity causes zero
+user-metadata, document-metadata, and content-loader calls, and that a content
+loader failure returns no partial result. Integration tests check that the
+candidate provider selects IDs only and that test stand-ins for snippets,
+citations, and model context are derived from authorized results. There is no
+actual snippets/citations/model-context component to test yet.
 
 ## 8. Attacker goals
 
-Potential attacker goals include:
+- Read a restricted document directly by ID or through search.
+- Infer a restricted document's existence, title, or content.
+- Manipulate request fields to impersonate a more privileged user.
+- Cause unauthorized content to enter model context.
+- Use prompt injection to try to override application instructions.
+- Discover credentials or protected text through logs and errors.
 
-- Reading a restricted document directly by ID.
-- Retrieving restricted text through search.
-- Inferring the existence or title of a restricted document.
-- Manipulating request fields to impersonate a more privileged user.
-- Causing unauthorized content to enter the model context.
-- Using prompt injection to attempt to override instructions or reveal information.
-- Discovering credentials or sensitive document text through logs and errors.
+These goals describe risks to evaluate; they are not claims of complete
+mitigation.
 
 ## 9. Assumptions
 
-- The initial demo uses fictional users and documents.
-- Development and testing take place locally.
-- Authentication and password hashing will use established libraries rather than custom cryptography.
-- The initial retrieval system will use a simple keyword or TF-IDF baseline.
-- A recording LLM stub will be used to inspect the exact input supplied by the application.
-- Automated tests will cover explicitly documented scenarios.
+- The demo uses fictional users and documents and is run locally.
+- Future authentication and password handling will use established libraries,
+  not custom cryptography.
+- Future retrieval may begin with a simple keyword or TF-IDF baseline.
+- A recording LLM stub may later be used to inspect model inputs.
+- Tests will be added as the corresponding components are implemented.
 
-These assumptions must be revisited if the architecture or scope changes.
+Revisit these assumptions when the architecture changes.
 
-## 10. Out of scope
+## 10. Out of scope and remaining risks
 
-The initial version does not claim to provide:
+The project does not claim production identity management, multi-tenant
+isolation, a general-purpose attribute-based policy engine, complete protection
+against prompt injection, predictable behavior from every real LLM,
+production deployment, or security certification. Current tests establish
+only the behaviors they assert against the simulated components. In
+particular, there is no real token verification, persistent data source,
+retrieval algorithm, API response path, LLM context builder, or audit logger.
 
-- Production-grade identity management or single sign-on.
-- Multi-tenant isolation guarantees.
-- A general-purpose attribute-based policy engine.
-- Complete protection against every prompt-injection attack.
-- Proof of how every real LLM will behave.
-- Production deployment or a production security certification.
+## 11. Open questions
 
-## 11. How security will be evaluated
-
-The project will use unit, integration, and security regression tests.
-
-Tests will cover authorized access, denied access, token failures, identity tampering, document-ID manipulation, restricted retrieval results, unauthorized model context, citations, prompt injection, and audit-log safety.
-
-The recording stub will help verify what the application sends to the model interface in the tested scenarios.
-
-Passing the test suite will provide evidence for those scenarios only. It will not prove that the application is completely secure.
-
-## 12. Open questions
-
-The following decisions remain to be confirmed during implementation:
-
-- The exact database schema.
-- The authentication and token configuration.
-- The retrieval algorithm and ranking behavior.
-- The API response format.
-- The audit event schema.
-- The exact definition and measurement of a confirmed leak.
-- Whether an optional real-LLM adapter is worthwhile after the core tests pass.
+- What database schema and production data adapters, if any, should be used?
+- Which authentication/token configuration should a future real adapter use?
+- What retrieval algorithm and ranking behavior should replace the deterministic
+  candidate mapping?
+- What API response and citation formats should be exposed?
+- What audit-event schema is useful without recording secrets or content?
+- How should a leak be defined and measured in end-to-end tests?
+- Is an optional real-LLM adapter worthwhile after the recording-stub tests?

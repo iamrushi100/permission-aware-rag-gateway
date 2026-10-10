@@ -2,31 +2,91 @@
 
 ## Purpose
 
-This student portfolio project explores how a backend can enforce document permissions in a retrieval-augmented generation (RAG) system. Its security goal is to prevent users from receiving or sending unauthorized document content to a language model.
+This beginner-friendly security portfolio project explores how a backend can
+check document permissions before protected text is used in a retrieval-
+augmented generation (RAG) workflow. It uses fictional demo data and is not a
+production security gateway.
 
-## Status
+## Current status
 
-**Phase 0 — Design and threat-model work.** Application implementation and automated tests have not yet been completed. The rules below describe proposed behavior, not existing controls.
+**Phase 2: authorization and retrieval-boundary demo.** A pure authorization
+policy, a simulated authorization boundary, an in-memory ID-only candidate
+provider, and `unittest` tests exist. The test suite can be run with:
 
-## Proposed authorization rules
+```text
+python -m unittest discover -s tests -v
+```
 
-- Requests require a valid authenticated identity, and the user must exist and be active.
-- User clearance must be at least the document's sensitivity. Public documents do not bypass this clearance check.
-- Department-restricted documents require an exact match between the user's department and the document's department.
+This command is documented for running the suite; this README does not claim
+that tests have passed in every environment.
+
+### Implemented and tested in this project
+
+- `authorization.py` defines the pure `is_authorized(user, document) -> bool`
+  policy, including ordered clearance checks, public-document clearance checks,
+  exact department matching for restricted documents, and no administrator
+  bypass.
+- `authorization_boundary.py` demonstrates a simulated identity-checking
+  seam and injected metadata/content dependencies. It validates metadata before
+  constructing canonical records and returns generic denial or dependency-
+  failure outcomes.
+- Multi-document authorization checks every candidate's metadata before
+  loading any protected content. An ordinary policy denial excludes only that
+  candidate (T14). A metadata lookup failure or timeout fails the whole search
+  before any candidate content is loaded (T16). A content-loader failure
+  returns no partial search result.
+- `retrieval_boundary.py` provides deterministic exact-query-to-document-ID
+  candidate selection in memory. It stores and returns IDs only; it is a demo
+  candidate provider, not a search engine.
+- Standard-library `unittest` tests cover these policy and boundary behaviors.
+
+“Implemented and tested” describes behavior represented by this code and its
+tests. It does not establish production readiness or complete system security.
+
+### Simulated behavior
+
+The identity-checking component and data dependencies are injected test
+seams. Tests use fakes, including a `VerifiedIdentity` marker; it does not
+perform or represent genuine cryptographic or token verification. The
+candidate provider uses fixed in-memory mappings rather than ranking or
+searching documents.
+
+### Planned or not implemented
+
+The project does not currently implement real token verification, production
+user/document/content data adapters, an API server, a vector database, an LLM,
+or a complete snippets/citations/context pipeline. It also does not implement
+production audit logging. Requirements concerning responses, logs, debugging
+output, snippets, citations, and model context remain end-to-end requirements
+until those components exist and are tested.
+
+## Approved version-one authorization policy
+
+- A request requires a valid authenticated identity; the user must exist and
+  be active.
+- Required identity, clearance, sensitivity, access type, and access-specific
+  metadata must be present and valid. Missing, malformed, conflicting, or
+  unrecognized required metadata denies access.
+- User clearance must be at least document sensitivity. Public documents do
+  not bypass clearance or other baseline checks.
+- Department-restricted documents require an exact, case-sensitive department
+  match.
 - Administrator status does not bypass document-reading checks.
-- Missing or invalid required authorization metadata causes denial.
-- Authorization dependency failures or timeouts fail closed.
-- Authorization must succeed before document content enters retrieval results or model context.
+- Required authorization dependency failures and timeouts fail closed.
+- Authorization must succeed before protected content enters results,
+  snippets, citations, or model context. T14 excludes an ordinarily denied
+  candidate while retaining authorized candidates. Under T16, a metadata
+  dependency failure or timeout fails the entire multi-document search.
 
-## Planned roadmap
+## Roadmap
 
-1. Define and implement authorization logic.
-2. Add permission-filtered retrieval.
-3. Write security tests for allowed and denied access paths.
-4. Define security-focused audit events.
-5. Expand project and security documentation.
-6. Consider an optional user interface after the core behavior is established.
+1. Extend the tested boundary toward a permission-filtered retrieval flow.
+2. Add further security tests for data sources, responses, citations, and
+   model-context construction.
+3. Define safe audit events and verify that secrets and protected content are
+   excluded.
+4. Improve documentation as implementation grows.
+5. Consider an optional UI after core behavior is established.
 
-## Threat model
-
-See the [threat model](docs/threat-model.md) for the proposed policy, security assumptions, and initial test plan.
+See the [threat model](docs/threat-model.md) for the policy, current control
+coverage, test plan, assumptions, and open questions.
